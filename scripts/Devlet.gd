@@ -2,8 +2,7 @@ extends CharacterBody3D
 
 ## Qırım Histori
 ## Главный герой — Devlet Giray.
-## Центральный персонаж, объединяющий движение,
-## здоровье, выносливость, бой, оружие и ранения.
+## Центральный персонаж игры.
 
 
 @export var walk_speed: float = 3.0
@@ -15,7 +14,7 @@ extends CharacterBody3D
 var health_component
 var stamina_component
 var combat_component
-var weapon_component
+var dual_wield_component
 var injury_component
 
 
@@ -31,31 +30,29 @@ func _create_components() -> void:
 	var health_script = preload("res://scripts/HealthComponent.gd")
 	var stamina_script = preload("res://scripts/StaminaComponent.gd")
 	var combat_script = preload("res://scripts/CombatComponent.gd")
-	var weapon_script = preload("res://scripts/WeaponComponent.gd")
+	var dual_wield_script = preload("res://scripts/DualWieldComponent.gd")
 	var injury_script = preload("res://scripts/InjuryComponent.gd")
 
 	health_component = health_script.new()
 	stamina_component = stamina_script.new()
 	combat_component = combat_script.new()
-	weapon_component = weapon_script.new()
+	dual_wield_component = dual_wield_script.new()
 	injury_component = injury_script.new()
 
 	add_child(health_component)
 	add_child(stamina_component)
 	add_child(combat_component)
-	add_child(weapon_component)
+	add_child(dual_wield_component)
 	add_child(injury_component)
 
 
 func _setup_devlet() -> void:
-	weapon_component.weapon_name = "Crimean Sabre"
-	weapon_component.damage = 25.0
-	weapon_component.stamina_cost = 15.0
-
-	weapon_component.equip()
+	dual_wield_component.equip_one_sabre()
 
 	print("Devlet Giray initialized.")
-	print("Weapon: ", weapon_component.weapon_name)
+	print("Combat style: One Sabre")
+	print("Right weapon: ",
+		dual_wield_component.get_right_weapon_name())
 
 
 func _physics_process(delta: float) -> void:
@@ -118,20 +115,101 @@ func _handle_movement(delta: float) -> void:
 		)
 
 
-func attack() -> void:
-	if weapon_component == null:
+func attack_right() -> void:
+	if dual_wield_component == null:
 		return
 
-	if not weapon_component.can_attack():
+	var weapon = dual_wield_component.right_weapon
+
+	if weapon == null:
 		return
 
-	var stamina_cost: float = weapon_component.stamina_cost
-
-	if not stamina_component.consume_stamina(stamina_cost):
-		print("Devlet is too exhausted to attack.")
+	if not weapon.can_attack():
 		return
 
-	combat_component.attack()
+	if not stamina_component.consume_stamina(
+		weapon.stamina_cost
+	):
+		print("Devlet is too exhausted.")
+		return
+
+	var damage = dual_wield_component.attack_right()
+
+	if damage > 0.0:
+		combat_component.attack()
+
+
+func attack_left() -> void:
+	if dual_wield_component == null:
+		return
+
+	var weapon = dual_wield_component.left_weapon
+
+	if weapon == null:
+		return
+
+	if not weapon.can_attack():
+		return
+
+	if not stamina_component.consume_stamina(
+		weapon.stamina_cost
+	):
+		print("Devlet is too exhausted.")
+		return
+
+	var damage = dual_wield_component.attack_left()
+
+	if damage > 0.0:
+		combat_component.attack()
+
+
+func attack_both() -> void:
+	if dual_wield_component == null:
+		return
+
+	if dual_wield_component.combat_style == \
+		dual_wield_component.CombatStyle.ONE_WEAPON:
+
+		attack_right()
+		return
+
+	var right_weapon = dual_wield_component.right_weapon
+	var left_weapon = dual_wield_component.left_weapon
+
+	if right_weapon == null or left_weapon == null:
+		return
+
+	var total_cost = (
+		right_weapon.stamina_cost +
+		left_weapon.stamina_cost
+	)
+
+	if not stamina_component.consume_stamina(total_cost):
+		print("Devlet is too exhausted.")
+		return
+
+	var results = dual_wield_component.attack_both()
+
+	var successful_attack := false
+
+	for damage in results:
+		if damage > 0.0:
+			successful_attack = true
+
+	if successful_attack:
+		combat_component.attack()
+
+
+func equip_one_sabre() -> void:
+	dual_wield_component.equip_one_sabre()
+
+
+func equip_dual_sabres() -> void:
+	dual_wield_component.equip_dual_sabres()
+
+
+func equip_sabre_and_dagger() -> void:
+	dual_wield_component.equip_sabre_and_dagger()
 
 
 func start_block() -> void:
@@ -146,11 +224,11 @@ func take_damage(amount: float) -> void:
 	health_component.take_damage(amount)
 
 
-func receive_body_injury(
-	body_part: InjuryComponent.BodyPart,
-	damage: float
-) -> void:
-	injury_component.apply_injury(body_part, damage)
+func receive_body_injury(body_part, damage: float) -> void:
+	injury_component.apply_injury(
+		body_part,
+		damage
+	)
 
 
 func restore_health(amount: float) -> void:
