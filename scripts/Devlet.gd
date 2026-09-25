@@ -19,7 +19,7 @@ var stamina_component
 var combat_component
 var weapon_component
 var injury_component
-var dual_wield_component
+var combat_state_component
 
 
 var is_running: bool = false
@@ -37,21 +37,21 @@ func _create_components() -> void:
 	var weapon_script = preload("res://scripts/WeaponComponent.gd")
 	var injury_script = preload("res://scripts/InjuryComponent.gd")
 	var dual_wield_script = preload("res://scripts/DualWieldComponent.gd")
-
+    var combat_state_script = preload("res://scripts/CombatStateComponent.gd")
 	health_component = health_script.new()
 	stamina_component = stamina_script.new()
 	combat_component = combat_script.new()
 	weapon_component = weapon_script.new()
 	injury_component = injury_script.new()
 	dual_wield_component = dual_wield_script.new()
-
+    combat_state_component = combat_state_script.new()
 	add_child(health_component)
 	add_child(stamina_component)
 	add_child(combat_component)
 	add_child(weapon_component)
 	add_child(injury_component)
 	add_child(dual_wield_component)
-
+    add_child(combat_state_component)
 
 func _setup_devlet() -> void:
 	# Основное оружие — правая сабля.
