@@ -2,7 +2,10 @@ extends CharacterBody3D
 
 ## Qırım Histori
 ## Главный герой — Devlet Giray.
-## Центральный персонаж игры.
+##
+## Центральная система персонажа:
+## движение + здоровье + выносливость +
+## бой + оружие + ранения + две сабли.
 
 
 @export var walk_speed: float = 3.0
@@ -14,8 +17,9 @@ extends CharacterBody3D
 var health_component
 var stamina_component
 var combat_component
-var dual_wield_component
+var weapon_component
 var injury_component
+var dual_wield_component
 
 
 var is_running: bool = false
@@ -30,34 +34,53 @@ func _create_components() -> void:
 	var health_script = preload("res://scripts/HealthComponent.gd")
 	var stamina_script = preload("res://scripts/StaminaComponent.gd")
 	var combat_script = preload("res://scripts/CombatComponent.gd")
-	var dual_wield_script = preload("res://scripts/DualWieldComponent.gd")
+	var weapon_script = preload("res://scripts/WeaponComponent.gd")
 	var injury_script = preload("res://scripts/InjuryComponent.gd")
+	var dual_wield_script = preload("res://scripts/DualWieldComponent.gd")
 
 	health_component = health_script.new()
 	stamina_component = stamina_script.new()
 	combat_component = combat_script.new()
-	dual_wield_component = dual_wield_script.new()
+	weapon_component = weapon_script.new()
 	injury_component = injury_script.new()
+	dual_wield_component = dual_wield_script.new()
 
 	add_child(health_component)
 	add_child(stamina_component)
 	add_child(combat_component)
-	add_child(dual_wield_component)
+	add_child(weapon_component)
 	add_child(injury_component)
+	add_child(dual_wield_component)
 
 
 func _setup_devlet() -> void:
-	dual_wield_component.equip_one_sabre()
+	# Основное оружие — правая сабля.
+	weapon_component.weapon_name = "Crimean Sabre"
+	weapon_component.damage = 25.0
+	weapon_component.stamina_cost = 15.0
+	weapon_component.equip()
+
+	# Левая и правая сабли.
+	dual_wield_component.left_damage = 22.0
+	dual_wield_component.right_damage = 25.0
+
+	dual_wield_component.left_stamina_cost = 13.0
+	dual_wield_component.right_stamina_cost = 15.0
+
+	dual_wield_component.attack_cooldown = 0.45
+
+	# Включаем режим двух сабель.
+	dual_wield_component.enable_dual_wield()
 
 	print("Devlet Giray initialized.")
-	print("Combat style: One Sabre")
-	print("Right weapon: ",
-		dual_wield_component.get_right_weapon_name())
+	print("Weapon: ", weapon_component.weapon_name)
+	print("Dual wield: ", dual_wield_component.is_dual_wielding())
 
 
 func _physics_process(delta: float) -> void:
 	_apply_gravity(delta)
 	_handle_movement(delta)
+	_handle_combat_input()
 
 	move_and_slide()
 
@@ -115,129 +138,234 @@ func _handle_movement(delta: float) -> void:
 		)
 
 
-func attack_right() -> void:
-	if dual_wield_component == null:
+func _handle_combat_input() -> void:
+	# Левая сабля.
+	if InputMap.has_action("attack_left"):
+		if Input.is_action_just_pressed("attack_left"):
+			attack_left()
+
+	# Правая сабля.
+	if InputMap.has_action("attack_right"):
+		if Input.is_action_just_pressed("attack_right"):
+			attack_right()
+
+	# Одновременная атака двумя саблями.
+	if InputMap.has_action("attack_dual"):
+		if Input.is_action_just_pressed("attack_dual"):
+			attack_dual()
+
+	# Левая защита.
+	if InputMap.has_action("block_left"):
+		if Input.is_action_pressed("block_left"):
+			start_left_block()
+		else:
+			stop_left_block()
+
+	# Правая защита.
+	if InputMap.has_action("block_right"):
+		if Input.is_action_pressed("block_right"):
+			start_right_block()
+		else:
+			stop_right_block()
+
+
+# ============================================================
+# ОДНА САБЛЯ
+# ============================================================
+
+func attack() -> void:
+	if weapon_component == null:
 		return
 
-	var weapon = dual_wield_component.right_weapon
-
-	if weapon == null:
+	if not weapon_component.can_attack():
 		return
 
-	if not weapon.can_attack():
+	var stamina_cost: float = weapon_component.stamina_cost
+
+	if not stamina_component.consume_stamina(stamina_cost):
+		print("Devlet is too exhausted to attack.")
 		return
 
-	if not stamina_component.consume_stamina(
-		weapon.stamina_cost
-	):
-		print("Devlet is too exhausted.")
-		return
+	combat_component.attack()
 
-	var damage = dual_wield_component.attack_right()
 
-	if damage > 0.0:
-		combat_component.attack()
-
+# ============================================================
+# ЛЕВАЯ САБЛЯ
+# ============================================================
 
 func attack_left() -> void:
 	if dual_wield_component == null:
 		return
 
-	var weapon = dual_wield_component.left_weapon
-
-	if weapon == null:
+	if not dual_wield_component.can_left_attack():
 		return
 
-	if not weapon.can_attack():
+	var stamina_cost := dual_wield_component.get_left_stamina_cost()
+
+	if not stamina_component.consume_stamina(stamina_cost):
+		print("Devlet is too exhausted for left-hand attack.")
 		return
 
-	if not stamina_component.consume_stamina(
-		weapon.stamina_cost
-	):
-		print("Devlet is too exhausted.")
-		return
-
-	var damage = dual_wield_component.attack_left()
-
-	if damage > 0.0:
+	if dual_wield_component.start_left_attack():
 		combat_component.attack()
 
+		# Пока нет анимационного контроллера,
+		# завершаем атаку сразу.
+		dual_wield_component.finish_left_attack()
 
-func attack_both() -> void:
+
+# ============================================================
+# ПРАВАЯ САБЛЯ
+# ============================================================
+
+func attack_right() -> void:
 	if dual_wield_component == null:
 		return
 
-	if dual_wield_component.combat_style == \
-		dual_wield_component.CombatStyle.ONE_WEAPON:
-
-		attack_right()
+	if not dual_wield_component.can_right_attack():
 		return
 
-	var right_weapon = dual_wield_component.right_weapon
-	var left_weapon = dual_wield_component.left_weapon
+	var stamina_cost := dual_wield_component.get_right_stamina_cost()
 
-	if right_weapon == null or left_weapon == null:
+	if not stamina_component.consume_stamina(stamina_cost):
+		print("Devlet is too exhausted for right-hand attack.")
 		return
 
-	var total_cost = (
-		right_weapon.stamina_cost +
-		left_weapon.stamina_cost
-	)
-
-	if not stamina_component.consume_stamina(total_cost):
-		print("Devlet is too exhausted.")
-		return
-
-	var results = dual_wield_component.attack_both()
-
-	var successful_attack := false
-
-	for damage in results:
-		if damage > 0.0:
-			successful_attack = true
-
-	if successful_attack:
+	if dual_wield_component.start_right_attack():
 		combat_component.attack()
 
-
-func equip_one_sabre() -> void:
-	dual_wield_component.equip_one_sabre()
+		dual_wield_component.finish_right_attack()
 
 
-func equip_dual_sabres() -> void:
-	dual_wield_component.equip_dual_sabres()
+# ============================================================
+# ДВЕ САБЛИ ОДНОВРЕМЕННО
+# ============================================================
+
+func attack_dual() -> void:
+	if dual_wield_component == null:
+		return
+
+	if not dual_wield_component.is_dual_wielding():
+		return
+
+	var stamina_cost := dual_wield_component.get_both_attack_stamina_cost()
+
+	if not stamina_component.consume_stamina(stamina_cost):
+		print("Devlet is too exhausted for dual attack.")
+		return
+
+	if dual_wield_component.start_both_attack():
+		combat_component.attack()
+
+		dual_wield_component.finish_both_attack()
 
 
-func equip_sabre_and_dagger() -> void:
-	dual_wield_component.equip_sabre_and_dagger()
+# ============================================================
+# БЛОК ЛЕВОЙ РУКОЙ
+# ============================================================
+
+func start_left_block() -> void:
+	if dual_wield_component == null:
+		return
+
+	dual_wield_component.start_left_block()
 
 
-func start_block() -> void:
-	combat_component.start_block()
+func stop_left_block() -> void:
+	if dual_wield_component == null:
+		return
+
+	dual_wield_component.stop_left_block()
 
 
-func stop_block() -> void:
-	combat_component.stop_block()
+# ============================================================
+# БЛОК ПРАВОЙ РУКОЙ
+# ============================================================
 
+func start_right_block() -> void:
+	if dual_wield_component == null:
+		return
+
+	dual_wield_component.start_right_block()
+
+
+func stop_right_block() -> void:
+	if dual_wield_component == null:
+		return
+
+	dual_wield_component.stop_right_block()
+
+
+# ============================================================
+# УПРАВЛЕНИЕ РЕЖИМОМ ДВУХ САБЕЛЬ
+# ============================================================
+
+func enable_dual_wield() -> void:
+	if dual_wield_component == null:
+		return
+
+	dual_wield_component.enable_dual_wield()
+
+
+func disable_dual_wield() -> void:
+	if dual_wield_component == null:
+		return
+
+	dual_wield_component.disable_dual_wield()
+
+
+func is_dual_wielding() -> bool:
+	if dual_wield_component == null:
+		return false
+
+	return dual_wield_component.is_dual_wielding()
+
+
+# ============================================================
+# ЗДОРОВЬЕ
+# ============================================================
 
 func take_damage(amount: float) -> void:
+	if health_component == null:
+		return
+
 	health_component.take_damage(amount)
 
 
-func receive_body_injury(body_part, damage: float) -> void:
-	injury_component.apply_injury(
-		body_part,
-		damage
-	)
-
-
 func restore_health(amount: float) -> void:
+	if health_component == null:
+		return
+
 	health_component.heal(amount)
 
 
-func restore_stamina(amount: float) -> void:
-	stamina_component.restore_stamina(amount)
-
-
 func is_alive() -> bool:
+	if health_component == null:
+		return false
+
 	return health_component.is_alive()
+
+
+# ============================================================
+# РАНЕНИЯ
+# ============================================================
+
+func receive_body_injury(
+	body_part: InjuryComponent.BodyPart,
+	damage: float
+) -> void:
+	if injury_component == null:
+		return
+
+	injury_component.apply_injury(body_part, damage)
+
+
+# ============================================================
+# ВЫНОСЛИВОСТЬ
+# ============================================================
+
+func restore_stamina(amount: float) -> void:
+	if stamina_component == null:
+		return
+
+	stamina_component.restore_stamina(amount)
